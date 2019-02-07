@@ -3,6 +3,7 @@ package transmission
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io/ioutil"
 	"sort"
 )
@@ -37,26 +38,67 @@ type arguments struct {
 	MetaInfo     string       `json:"metainfo,omitempty"`
 	Filename     string       `json:"filename,omitempty"`
 	TorrentAdded TorrentAdded `json:"torrent-added"`
+	Paused       bool         `json:"paused,omitempty"`
+	Location     string       `json:"location,omitempty"`
+}
+
+//TrackerStat struct for tracker stats.
+type TrackerStat struct {
+	Announce              string `json:"announce"`
+	AnnounceState         int    `json:"announceState"`
+	DownloadCount         int    `json:"downloadCount"`
+	HasAnnounced          bool   `json:"hasAnnounced"`
+	HasScraped            bool   `json:"hasScraped"`
+	Host                  string `json:"host"`
+	ID                    uint64 `json:"id"`
+	IsBackup              bool   `json:"isBackup"`
+	LastAnnouncePeerCount int    `json:"lastAnnouncePeerCount"`
+	LastAnnounceResult    string `json:"lastAnnounceResult"`
+	LastAnnounceStartTime int64  `json:"lastAnnounceStartTime"`
+	LastAnnounceSucceeded bool   `json:"lastAnnounceSucceeded"`
+	LastAnnounceTime      int64  `json:"lastAnnounceTime"`
+	LastAnnounceTimedOut  bool   `json:"lastAnnounceTimedOut"`
+	LastScrapeResult      string `json:"lastScrapeResult"`
+	LastScrapeStartTime   int64  `json:"lastScrapeStartTime"`
+	LastScrapeSucceeded   bool   `json:"lastScrapeSucceeded"`
+	LastScrapeTime        int64  `json:"lastScrapeTime"`
+	LastScrapeTimedOut    int64  `json:"lastScrapeTimedOut"`
+	LeecherCount          int    `json:"leecherCount"`
+	NextAnnounceTime      int64  `json:"nextAnnounceTime"`
+	NextScrapeTime        int64  `json:"nextScrapeTime"`
+	Scrape                string `json:"scrape"`
+	ScrapeState           int    `json:"scrapeState"`
+	SeederCount           int    `json:"seederCount"`
+	Tier                  int    `json:"tier"`
+}
+
+//File struct for tracker stats.
+type File struct {
+	BytesCompleted int64
+	Length         int64
+	Name           string
 }
 
 //Torrent struct for torrents
 type Torrent struct {
-	ID            int     `json:"id"`
-	Name          string  `json:"name"`
-	Status        int     `json:"status"`
-	AddedDate     int     `json:"addedDate"`
-	LeftUntilDone int     `json:"leftUntilDone"`
-	Eta           int     `json:"eta"`
-	UploadRatio   float64 `json:"uploadRatio"`
-	RateDownload  int     `json:"rateDownload"`
-	RateUpload    int     `json:"rateUpload"`
-	DownloadDir   string  `json:"downloadDir"`
-	IsFinished    bool    `json:"isFinished"`
-	PercentDone   float64 `json:"percentDone"`
-	SeedRatioMode int     `json:"seedRatioMode"`
-	HashString    string  `json:"hashString"`
-	Error         int     `json:"error"`
-	ErrorString   string  `json:"errorString"`
+	ID            int           `json:"id"`
+	Name          string        `json:"name"`
+	Status        int           `json:"status"`
+	AddedDate     int           `json:"addedDate"`
+	LeftUntilDone int64         `json:"leftUntilDone"`
+	Eta           int           `json:"eta"`
+	UploadRatio   float64       `json:"uploadRatio"`
+	RateDownload  int           `json:"rateDownload"`
+	RateUpload    int           `json:"rateUpload"`
+	DownloadDir   string        `json:"downloadDir"`
+	IsFinished    bool          `json:"isFinished"`
+	PercentDone   float64       `json:"percentDone"`
+	SeedRatioMode int           `json:"seedRatioMode"`
+	HashString    string        `json:"hashString"`
+	Error         int           `json:"error"`
+	ErrorString   string        `json:"errorString"`
+	TrackerStats  []TrackerStat `json:"trackerStats"`
+	Files         []File        `json:"files"`
 }
 
 // Torrents represent []Torrent
@@ -132,6 +174,24 @@ func (ac *TransmissionClient) GetTorrents() (Torrents, error) {
 	return out.Arguments.Torrents, nil
 }
 
+//GetTorrent get a torrent by its ID
+func (ac *TransmissionClient) GetTorrent(id int) (Torrent, error) {
+	cmd, err := NewGetTorrentsCmd()
+
+	cmd.Arguments.Ids = []int{id}
+
+	out, err := ac.ExecuteCommand(cmd)
+	if err != nil {
+		return Torrent{}, err
+	}
+
+	if len(out.Arguments.Torrents) != 1 {
+		return Torrent{}, errors.New("no results found")
+	}
+
+	return out.Arguments.Torrents[0], nil
+}
+
 //StartTorrent start the torrent
 func (ac *TransmissionClient) StartTorrent(id int) (string, error) {
 	return ac.sendSimpleCommand("torrent-start", id)
@@ -142,6 +202,11 @@ func (ac *TransmissionClient) StopTorrent(id int) (string, error) {
 	return ac.sendSimpleCommand("torrent-stop", id)
 }
 
+//VerifyTorrent verify the torrent
+func (ac *TransmissionClient) VerifyTorrent(id int) (string, error) {
+	return ac.sendSimpleCommand("torrent-verify", id)
+}
+
 func NewGetTorrentsCmd() (*Command, error) {
 	cmd := &Command{}
 
@@ -149,7 +214,8 @@ func NewGetTorrentsCmd() (*Command, error) {
 	cmd.Arguments.Fields = []string{"id", "name", "hashString",
 		"status", "addedDate", "leftUntilDone", "eta", "uploadRatio",
 		"rateDownload", "rateUpload", "downloadDir", "isFinished",
-		"percentDone", "seedRatioMode", "error", "errorString"}
+		"percentDone", "seedRatioMode", "error", "errorString",
+		"trackerStats", "files"}
 
 	return cmd, nil
 }
@@ -193,6 +259,13 @@ func NewAddCmdByFile(file string) (*Command, error) {
 
 func (cmd *Command) SetDownloadDir(dir string) {
 	cmd.Arguments.DownloadDir = dir
+}
+
+func NewSetCmd(id int) (*Command, error) {
+	cmd := &Command{}
+	cmd.Method = "torrent-set"
+	cmd.Arguments.Ids = []int{id}
+	return cmd, nil
 }
 
 func NewDelCmd(id int, removeFile bool) (*Command, error) {
