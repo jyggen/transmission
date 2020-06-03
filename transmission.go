@@ -62,7 +62,7 @@ type TrackerStat struct {
 	LastScrapeStartTime   int64  `json:"lastScrapeStartTime"`
 	LastScrapeSucceeded   bool   `json:"lastScrapeSucceeded"`
 	LastScrapeTime        int64  `json:"lastScrapeTime"`
-	LastScrapeTimedOut    int64  `json:"lastScrapeTimedOut"`
+	LastScrapeTimedOut    bool  `json:"lastScrapeTimedOut"`
 	LeecherCount          int    `json:"leecherCount"`
 	NextAnnounceTime      int64  `json:"nextAnnounceTime"`
 	NextScrapeTime        int64  `json:"nextScrapeTime"`
